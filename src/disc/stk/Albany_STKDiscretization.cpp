@@ -2176,6 +2176,24 @@ STKDiscretization::computeNodeSets()
     }
     ns++;
   }
+
+  // // Add side discretizations nodesets
+  // for (auto disc : sideSetDiscretizations) {
+  //   auto ss_nodesets = disc.second->getNodeSets();
+  //   auto ss_nodesets_gids = disc.second->getNodeSetGIDs();
+  //   auto ss_nodesets_coords = disc.second->getNodeSetCoords();
+  //   for (auto it : ss_nodesets) {
+  //     const std::string name = it.first + "_" + it.first;
+
+  //     auto ss_ns = it.second;
+  //     auto ss_ns_gids = ss_nodesets_gids.at(it.first);
+  //     auto ss_ns_coords = ss_nodesets_coords.at(it.first);
+
+  //     nodeSets[name] = ss_ns;
+  //     nodeSetGIDs[name] = ss_ns_gids;
+  //     nodeSetCoords[name] = ss_ns_coords;
+  //   }
+  // }
 }
 
 void
