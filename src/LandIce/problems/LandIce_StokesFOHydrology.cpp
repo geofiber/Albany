@@ -30,6 +30,7 @@ StokesFOHydrology (const Teuchos::RCP<Teuchos::ParameterList>& params_,
     unsteady = true;
   } else {
     unsteady = false;
+    hydro_ndofs_dot = 0;
   }
 
   TEUCHOS_TEST_FOR_EXCEPTION (eliminate_h && unsteady, std::logic_error,
@@ -42,29 +43,23 @@ StokesFOHydrology (const Teuchos::RCP<Teuchos::ParameterList>& params_,
   // Fill the variables names
   auto& vnames = params->sublist("Variables Names");
 
-  var_names.water_pressure             = vnames.get<std::string>("Water Pressure Name", "water_pressure");
-  var_names.water_thickness            = vnames.get<std::string>("Water Thickness Name", "water_thickness");
-  var_names.till_water_storage         = vnames.get<std::string>("Till Water Storage Name", "till_water_storage");
-  var_names.water_pressure_dot         = vnames.get<std::string>("Water Pressure Dot Name", "water_pressure_dot");
-  var_names.water_thickness_dot        = vnames.get<std::string>("Water Thickness Dot Name", "water_thickness_dot");
-  var_names.till_water_storage_dot     = vnames.get<std::string>("Till Water Storage Dot Name", "till_water_storage_dot");
+  water_pressure_name         = vnames.get<std::string>("Water Pressure Name", "water_pressure");
+  water_thickness_name        = vnames.get<std::string>("Water Thickness Name", "water_thickness");
+  till_water_storage_name     = vnames.get<std::string>("Till Water Storage Name", "till_water_storage");
+  water_pressure_dot_name     = vnames.get<std::string>("Water Pressure Dot Name", "water_pressure_dot");
+  water_thickness_dot_name    = vnames.get<std::string>("Water Thickness Dot Name", "water_thickness_dot");
+  till_water_storage_dot_name = vnames.get<std::string>("Till Water Storage Dot Name", "till_water_storage_dot");
 
-  var_names.hydraulic_potential        = vnames.get<std::string>("Hydraulic Potential Name", "hydraulic_potential");
-  var_names.ice_softness               = vnames.get<std::string>("Ice Softness Name", flow_factor_name);
-  var_names.ice_overburden             = vnames.get<std::string>("Ice Overburden Name", "ice_overburden");
-  var_names.effective_pressure         = vnames.get<std::string>("Effective Pressure Name", effective_pressure_name);
-  var_names.temperature                = vnames.get<std::string>("Temperature Name", temperature_name);
-  var_names.corrected_temperature      = vnames.get<std::string>("Corrected Temperature Name", corrected_temperature_name);
-  var_names.ice_thickness              = vnames.get<std::string>("Ice Thickness Name", ice_thickness_name);
-  var_names.surface_height             = vnames.get<std::string>("Surface Height Name", surface_height_name);
-  var_names.beta                       = vnames.get<std::string>("Beta Name", "beta");
-  var_names.melting_rate               = vnames.get<std::string>("Melting Rate Name", "melting_rate");
-  var_names.surface_water_input        = vnames.get<std::string>("Surface Water Input Name", "surface_water_input");
-  var_names.surface_mass_balance       = vnames.get<std::string>("Surface Mass Balance Name", "surface_mass_balance");
-  var_names.geothermal_flux            = vnames.get<std::string>("Geothermal Flux Name", "geothermal_flux");
-  var_names.water_discharge            = vnames.get<std::string>("Water Discharge Name", "water_discharge");
-  var_names.sliding_velocity           = vnames.get<std::string>("Sliding Velocity Name", "sliding_velocity");
-  var_names.basal_grav_water_potential = vnames.get<std::string>("Basal Gravitational Water Potential Name", "basal_gravitational_water_potential");
+  hydropotential_name       = vnames.get<std::string>("Hydraulic Potential Name", "hydropotential");
+  ice_overburden_name       = vnames.get<std::string>("Ice Overburden Name", "ice_overburden");
+  beta_name                 = vnames.get<std::string>("Beta Name", "beta");
+  melting_rate_name         = vnames.get<std::string>("Melting Rate Name", "melting_rate");
+  surface_water_input_name  = vnames.get<std::string>("Surface Water Input Name", "surface_water_input");
+  surface_mass_balance_name = vnames.get<std::string>("Surface Mass Balance Name", "surface_mass_balance");
+  geothermal_flux_name      = vnames.get<std::string>("Geothermal Flux Name", "geothermal_flux");
+  water_discharge_name      = vnames.get<std::string>("Water Discharge Name", "water_discharge");
+  sliding_velocity_name     = vnames.get<std::string>("Sliding Velocity Name", "sliding_velocity");
+  grav_hydropotential_name  = vnames.get<std::string>("Basal Gravitational Water Potential Name", "basal_gravitational_water_potential");
 
   // Set the num PDEs depending on the problem specs
   if (eliminate_h) {
@@ -77,40 +72,73 @@ StokesFOHydrology (const Teuchos::RCP<Teuchos::ParameterList>& params_,
   stokes_neq = vecDimFO;
   stokes_ndofs = 1;
   hydro_ndofs = hydro_neq;
+  stokes_dof_offset = 0;
+  hydro_dof_offset = stokes_neq;
 
   this->setNumEquations(hydro_neq + stokes_neq);
   rigidBodyModes->setParameters(neq, computeConstantModes, vecDimFO, computeRotationModes);
 
-  hydro_dofs_names.resize(hydro_neq);
-  hydro_resids_names.resize(hydro_neq);
-  stokes_dofs_names.resize(stokes_neq);
+  // Copy all dof_blah arrays into stokes_blah ones.
+  // (so far, dof_blah contains only data relative to stokes)
+  stokes_dofs_names.resize(stokes_ndofs);
   stokes_resids_names.resize(stokes_neq);
-
   stokes_dofs_names.deepCopy(dof_names());
   stokes_resids_names.deepCopy(resid_names());
 
-  dof_names.resize(stokes_ndofs+hydro_neq);
-  resid_names.resize(stokes_ndofs+hydro_neq);
-  scatter_names.resize(2);
+  // Now resize global dof/resid/scatter/offsets arrays
+  dof_names.resize(stokes_ndofs+hydro_ndofs);
+  resid_names.resize(stokes_neq+hydro_neq);
+  dof_offsets.resize(stokes_ndofs+hydro_ndofs);
+
+  // Hydro-specific arrays
+  hydro_dofs_names.resize(hydro_ndofs);
+  hydro_resids_names.resize(hydro_neq);
 
   // We always solve for the water pressure
-  hydro_dofs_names[0]   = dof_names[stokes_ndofs] = var_names.water_pressure;
+  hydro_dofs_names[0]   = dof_names[stokes_ndofs] = basal(water_pressure_name);
   hydro_resids_names[0] = resid_names[stokes_ndofs] = "Residual Mass Eqn";
-  scatter_names[1] = "Scatter Hydrology";
 
   if (!eliminate_h) {
-    hydro_dofs_names[1]   = dof_names[stokes_ndofs+1] = var_names.water_thickness;
+    hydro_dofs_names[1]   = dof_names[stokes_ndofs+1] = basal(water_thickness_name);
     hydro_resids_names[1] = resid_names[stokes_ndofs+1] = "Residual Cavities Eqn";
   }
 
   if (has_h_till) {
-    hydro_dofs_names[2]   = dof_names[stokes_ndofs+2] = var_names.till_water_storage;
+    hydro_dofs_names[2]   = dof_names[stokes_ndofs+2] = basal(till_water_storage_name);
     hydro_resids_names[2] = resid_names[stokes_ndofs+2] = "Residual Till Storage Eqn";
   }
 
+  // A single scatter op for hydrology (may have multiple resid fields though).
+  scatter_names.resize(2);
+  scatter_names[1] = "Scatter Hydrology";
+
+  // Figure out which dofs appear under time derivative
+  if (unsteady) {
+    auto& hy = params->sublist("LandIce Hydrology");
+    auto& cav = hy.sublist("Cavities Equation");
+    if (cav.get<double>("Englacial Porosity")>0.0) {
+      hydro_dofs_dot_names.resize(2);
+      hydro_dofs_dot_names[0] = basal(water_pressure_name) + "_dot";
+      hydro_dofs_dot_names[1] = basal(water_thickness_name) + "_dot";
+      hydro_dof_dot_offset = hydro_dof_offset;
+      hydro_ndofs_dot = 2;
+    } else {
+      hydro_dofs_dot_names.resize(1);
+      hydro_dofs_dot_names[0] = basal(water_thickness_name) + "_dot";
+      hydro_dof_dot_offset = hydro_dof_offset + 1;
+      hydro_ndofs_dot = 1;
+    }
+    if (has_h_till) {
+      hydro_dofs_dot_names.resize(hydro_ndofs_dot+1);
+      hydro_dofs_dot_names[hydro_ndofs_dot] = basal(till_water_storage_name) + "_dot";
+      ++hydro_ndofs_dot;
+    }
+  }
+
   // Set the hydrology equations as side set equations on the basal side
-  for (unsigned int eq=stokes_neq; eq<neq; ++eq)
+  for (unsigned int eq=stokes_neq; eq<neq; ++eq) {
     this->sideSetEquations[eq].push_back(basalSideName);
+  }
 }
 
 Teuchos::Array< Teuchos::RCP<const PHX::FieldTag> >
@@ -214,30 +242,41 @@ StokesFOHydrology::getValidProblemParameters () const
 void StokesFOHydrology::setFieldsProperties () {
   StokesFOBase::setFieldsProperties();
 
+  // All dofs are defined at nodes in Albany, so go ahead and mark them available at nodes.
+  auto eval_names = { PHX::print<PHAL::AlbanyTraits::Residual>(),
+                      PHX::print<PHAL::AlbanyTraits::Jacobian>(),
+                      PHX::print<PHAL::AlbanyTraits::Tangent>(),
+                      PHX::print<PHAL::AlbanyTraits::DistParamDeriv>(),
+                      PHX::print<PHAL::AlbanyTraits::HessianVec>() };
+  for (const auto& eval : eval_names) {
+    for (const auto& dof : hydro_dofs_dot_names) {
+      is_field_available[eval][dof][FL::Node] = true;
+    }
+  }
+
   // Set dof's properties
-  setSingleFieldProperties(var_names.water_pressure, FRT::Scalar, FST::Scalar, FL::Node);
-  setSingleFieldProperties(var_names.water_thickness, FRT::Scalar, FST::Scalar, FL::Node);
-  setSingleFieldProperties(var_names.till_water_storage, FRT::Scalar, FST::Scalar, FL::Node);
+  setSingleFieldProperties(water_pressure_name,      FRT::Scalar);
+  setSingleFieldProperties(water_thickness_name,     FRT::Scalar);
+  setSingleFieldProperties(till_water_storage_name,  FRT::Scalar);
 
-  setSingleFieldProperties(effective_pressure_name, FRT::Scalar, FST::Scalar, FL::Node);
-  setSingleFieldProperties(var_names.water_discharge, FRT::Gradient, FST::Scalar, FL::QuadPoint);
-  setSingleFieldProperties(var_names.hydraulic_potential, FRT::Scalar, FST::Scalar, FL::Node);
-  setSingleFieldProperties(var_names.surface_water_input, FRT::Scalar, FST::ParamScalar, FL::Node);
-
-  is_ss_computed_field[basalSideName][effective_pressure_name] = true;
+  setSingleFieldProperties(effective_pressure_name,  FRT::Scalar);
+  setSingleFieldProperties(water_discharge_name,     FRT::Gradient);
+  setSingleFieldProperties(hydropotential_name,      FRT::Scalar);
+  setSingleFieldProperties(surface_water_input_name, FRT::Scalar);
 }
 
 void StokesFOHydrology::setupEvaluatorRequests () {
   StokesFOBase::setupEvaluatorRequests();
 
-  ss_build_interp_ev[basalSideName][var_names.water_pressure][InterpolationRequest::QP_VAL] = true; 
+  ss_build_interp_ev[basalSideName][water_pressure_name][InterpolationRequest::QP_VAL] = true; 
   if (!eliminate_h) {
     // If we eliminate h, then we compute water thickness, rather than interpolate the dof
-    ss_build_interp_ev[basalSideName][var_names.water_thickness][InterpolationRequest::QP_VAL] = true; 
+    ss_build_interp_ev[basalSideName][water_thickness_name][InterpolationRequest::QP_VAL] = true; 
   }
-  ss_build_interp_ev[basalSideName][var_names.hydraulic_potential][InterpolationRequest::GRAD_QP_VAL] = true; 
-  ss_build_interp_ev[basalSideName][var_names.water_discharge][InterpolationRequest::CELL_VAL] = true; 
-  ss_build_interp_ev[basalSideName][var_names.surface_water_input][InterpolationRequest::QP_VAL] = true; 
+  ss_build_interp_ev[basalSideName][hydropotential_name][InterpolationRequest::GRAD_QP_VAL] = true; 
+  ss_build_interp_ev[basalSideName][water_discharge_name][InterpolationRequest::CELL_VAL] = true; 
+  ss_build_interp_ev[basalSideName][surface_water_input_name][InterpolationRequest::QP_VAL] = true; 
+  ss_build_interp_ev[basalSideName][flow_factor_name][InterpolationRequest::CELL_TO_SIDE] = true; 
 }
 
 } // namespace LandIce

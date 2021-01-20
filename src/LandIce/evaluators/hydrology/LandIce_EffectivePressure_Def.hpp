@@ -51,7 +51,7 @@ EffectivePressure (const Teuchos::ParameterList& p,
     this->addDependentField (P_w);
   }
 
-  P_o = PHX::MDField<const ParamScalarT>(p.get<std::string> ("Ice Overburden Variable Name"), layout);
+  P_o = PHX::MDField<const RealType>(p.get<std::string> ("Ice Overburden Variable Name"), layout);
   N   = PHX::MDField<HydroScalarT>(p.get<std::string> ("Effective Pressure Variable Name"), layout);
   this->addDependentField (P_o);
   this->addEvaluatedField (N);

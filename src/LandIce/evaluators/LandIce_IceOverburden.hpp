@@ -11,7 +11,9 @@
 #include "Phalanx_Evaluator_WithBaseImpl.hpp"
 #include "Phalanx_Evaluator_Derived.hpp"
 #include "Phalanx_MDField.hpp"
+
 #include "Albany_Layouts.hpp"
+#include "Albany_ScalarOrdinalTypes.hpp"
 
 namespace LandIce
 {
@@ -22,7 +24,7 @@ namespace LandIce
     with H being the ice thickness
 */
 
-template<typename EvalT, typename Traits, bool IsStokes>
+template<typename EvalT, typename Traits>
 class IceOverburden : public PHX::EvaluatorWithBaseImpl<Traits>,
                       public PHX::EvaluatorDerived<EvalT, Traits>
 {
@@ -33,8 +35,8 @@ public:
   IceOverburden (const Teuchos::ParameterList& p,
                  const Teuchos::RCP<Albany::Layouts>& dl);
 
-  void postRegistrationSetup (typename Traits::SetupData d,
-                              PHX::FieldManager<Traits>& fm);
+  void postRegistrationSetup (typename Traits::SetupData,
+                              PHX::FieldManager<Traits>&) {}
 
   void evaluateFields(typename Traits::EvalData d);
 
@@ -44,12 +46,13 @@ private:
   void evaluateFieldsSide(typename Traits::EvalData d);
 
   // Input:
-  PHX::MDField<const ParamScalarT>  H;
+  PHX::MDField<const RealType>  H;
 
   // Output:
-  PHX::MDField<ParamScalarT>        P_o;
+  PHX::MDField<RealType>        P_o;
 
-  std::string basalSideName;  // Only if IsStokes  is true
+  bool eval_on_side;
+  std::string sideSetName;  // Only used if eval_on_side=true
 
   unsigned int numPts;
 

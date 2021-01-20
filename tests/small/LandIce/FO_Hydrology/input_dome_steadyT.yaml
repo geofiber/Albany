@@ -15,7 +15,7 @@ ANONYMOUS:
       Parameter 0:
         Type: Scalar
         Name: Homotopy Parameter
-        Nominal Values: [0.1]
+        Nominal Value: 0.1
     Response Functions: 
       Number Of Responses: 1
       Response 0: 
@@ -29,7 +29,7 @@ ANONYMOUS:
       Function: Constant
       Function Data: [10.0, 10.0, 100.0]
     Dirichlet BCs: 
-      DBC on NS extruded_BoundaryNodeSet1 for DOF water_pressure: 0.00000000000000000e+00
+      DBC on NS extruded_BoundaryNodeSet1 for DOF water_pressure_basalside: 0.00000000000000000e+00
       # DBC off NS bottom for DOF water_thickness_basalside: 0.00000000000000000e+00
     Neumann BCs: { }
     LandIce BCs:

@@ -13,6 +13,7 @@
 #include "Phalanx_MDField.hpp"
 
 #include "Albany_Layouts.hpp"
+#include "Albany_ScalarOrdinalTypes.hpp"
 
 namespace LandIce
 {
@@ -31,8 +32,8 @@ public:
 
   typedef typename EvalT::ScalarT       ScalarT;
   typedef typename EvalT::ParamScalarT  ParamScalarT;
-  typedef typename std::conditional<IsStokes,ScalarT,ParamScalarT>::type      IceScalarT;
-  typedef typename std::conditional<ThermoCoupled,ScalarT,ParamScalarT>::type TempScalarT;
+  typedef typename std::conditional<IsStokes,ScalarT,RealType>::type      IceScalarT;
+  typedef typename std::conditional<ThermoCoupled,ScalarT,RealType>::type TempScalarT;
 
   HydrologyWaterThickness (const Teuchos::ParameterList& p,
                            const Teuchos::RCP<Albany::Layouts>& dl);

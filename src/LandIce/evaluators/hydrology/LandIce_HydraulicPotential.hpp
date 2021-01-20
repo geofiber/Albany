@@ -21,7 +21,7 @@ namespace LandIce
     This evaluator evaluates the basal potential phi = \rho_w * g * z_b at the basal side
 */
 
-template<typename EvalT, typename Traits, bool IsStokes>
+template<typename EvalT, typename Traits>
 class HydraulicPotential : public PHX::EvaluatorWithBaseImpl<Traits>,
                            public PHX::EvaluatorDerived<EvalT, Traits>
 {
@@ -33,8 +33,8 @@ public:
   HydraulicPotential (const Teuchos::ParameterList& p,
                        const Teuchos::RCP<Albany::Layouts>& dl);
 
-  void postRegistrationSetup (typename Traits::SetupData d,
-                              PHX::FieldManager<Traits>& fm);
+  void postRegistrationSetup (typename Traits::SetupData,
+                              PHX::FieldManager<Traits>&) {}
 
   void evaluateFields(typename Traits::EvalData d);
 
@@ -51,7 +51,8 @@ private:
   // Output:
   PHX::MDField<ScalarT>         phi;
 
-  std::string basalSideName;  // Only if IsStokes  is true
+  bool eval_on_side;
+  std::string sideSetName;  // Only used if eval_on_side=true
 
   unsigned int numPts;
 

@@ -83,10 +83,10 @@ inline FieldScalarType& operator|= (FieldScalarType& st1,
 
 inline std::string e2str (const FieldScalarType e) {
   switch (e) {
-    case FieldScalarType::Scalar:       return "Scalar";      break;
+    case FieldScalarType::Real:         return "Real";        break;
     case FieldScalarType::MeshScalar:   return "MeshScalar";  break;
     case FieldScalarType::ParamScalar:  return "ParamScalar"; break;
-    case FieldScalarType::Real:         return "Real";        break;
+    case FieldScalarType::Scalar:       return "Scalar";      break;
     default:                            return INVALID_STR;
   }
 

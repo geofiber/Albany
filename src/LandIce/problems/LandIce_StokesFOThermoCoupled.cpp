@@ -278,44 +278,29 @@ void StokesFOThermoCoupled::setFieldsProperties () {
     TEUCHOS_TEST_FOR_EXCEPTION(adjustBedTopo == adjustSurfaceHeight, std::logic_error, "Error! When the ice thickness is a parameter,\n "
         "either 'Adjust Bed Topography to Account for Thickness Changes' or\n"
         " 'Adjust Surface Height to Account for Thickness Changes' needs to be true.\n");
-
-    if (adjustSurfaceHeight) {
-      is_computed_field[surface_height_name] = true;
-    } else if (adjustBedTopo) {
-      is_computed_field[surface_height_name] = true;
-      is_computed_field[bed_topography_name] = true;
-    }
   }
 
 
   // UpdateZCoordinate expects the (observed) bed topography and (observed) surface height to have scalar type MeshScalarT.
-  setSingleFieldProperties("observed_bed_topography", FRT::Scalar, FST::MeshScalar, FL::Node);
-  setSingleFieldProperties("observed_surface_height", FRT::Scalar, FST::MeshScalar, FL::Node);
+  setSingleFieldProperties("observed_bed_topography", FRT::Scalar);
+  setSingleFieldProperties("observed_surface_height", FRT::Scalar);
 
   // All dofs have scalar type Scalar (i.e., they depend on the solution)
-  setSingleFieldProperties(dof_names[1], FRT::Scalar, FST::Scalar, FL::Node);  // Vertical velocity
-  setSingleFieldProperties(dof_names[2], FRT::Scalar, FST::Scalar, FL::Node);  // Enthalpy
-  setSingleFieldProperties(dof_names[3], FRT::Scalar, FST::Scalar, FL::Node);  // FluxDiv
+  setSingleFieldProperties(dof_names[1], FRT::Scalar, FST::Scalar);  // Vertical velocity
+  setSingleFieldProperties(dof_names[2], FRT::Scalar, FST::Scalar);  // Enthalpy
+  setSingleFieldProperties(dof_names[3], FRT::Scalar, FST::Scalar);  // FluxDiv
 
-  setSingleFieldProperties(surface_enthalpy_name     , FRT::Scalar, FST::ParamScalar, FL::Node);
-  setSingleFieldProperties(flow_factor_name          , FRT::Scalar, FST::Scalar     , FL::Cell); // Already processed in StokesFOBase, but need to adjust scalar type
-  setSingleFieldProperties("basal_melt_rate"         , FRT::Scalar, FST::Scalar     , FL::Node);
-  setSingleFieldProperties(geothermal_flux_name      , FRT::Scalar, FST::ParamScalar, FL::Node);
-  setSingleFieldProperties(water_content_name        , FRT::Scalar, FST::Scalar     , FL::Node);
-  setSingleFieldProperties(temperature_name          , FRT::Scalar, FST::Scalar     , FL::Node);
-  setSingleFieldProperties(corrected_temperature_name, FRT::Scalar, FST::Scalar     , FL::Node); // Already processed in StokesFOBase, but need to adjust scalar type
-  setSingleFieldProperties(melting_temperature_name  , FRT::Scalar, FST::MeshScalar , FL::Node);
-  setSingleFieldProperties(melting_enthalpy_name     , FRT::Scalar, field_scalar_type[melting_temperature_name] , FL::Node);
-  setSingleFieldProperties(hydrostatic_pressure_name , FRT::Scalar, FST::ParamScalar, FL::Node);
-  setSingleFieldProperties("basal_vert_velocity"     , FRT::Scalar, FST::Scalar     , FL::Node);
-
-  // Declare computed fields
-  // NOTE: not *always* necessary, but it is sometimes (see StokesFOBase, towards the end of constructInterpolationEvaluators)
-  is_computed_field[surface_enthalpy_name] = true; // Surface Enthalpy is the prescribed field for dirichlet bc, and it's computed
-  is_computed_field[melting_enthalpy_name] = true;
-  is_computed_field[temperature_name] = true;
-  is_computed_field[water_content_name] = true;
-  is_computed_field["basal_melt_rate"] = true;
+  setSingleFieldProperties(surface_enthalpy_name     , FRT::Scalar);
+  setSingleFieldProperties(flow_factor_name          , FRT::Scalar); // Already processed in StokesFOBase, but need to adjust scalar type
+  setSingleFieldProperties("basal_melt_rate"         , FRT::Scalar);
+  setSingleFieldProperties(geothermal_flux_name      , FRT::Scalar);
+  setSingleFieldProperties(water_content_name        , FRT::Scalar);
+  setSingleFieldProperties(temperature_name          , FRT::Scalar);
+  setSingleFieldProperties(corrected_temperature_name, FRT::Scalar); // Already processed in StokesFOBase, but need to adjust scalar type
+  setSingleFieldProperties(melting_temperature_name  , FRT::Scalar);
+  setSingleFieldProperties(melting_enthalpy_name     , FRT::Scalar);
+  setSingleFieldProperties(hydrostatic_pressure_name , FRT::Scalar);
+  setSingleFieldProperties("basal_vert_velocity"     , FRT::Scalar);
 }
 
 } // namespace LandIce

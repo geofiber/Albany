@@ -27,7 +27,7 @@
 #include "LandIce_HydrologyBasalGravitationalWaterPotential.hpp"
 #include "LandIce_HydraulicPotential.hpp"
 #include "LandIce_EffectivePressure.hpp"
-#include "LandIce_IceSoftness.hpp"
+#include "LandIce_FlowRate.hpp"
 #include "LandIce_IceOverburden.hpp"
 #include "LandIce_HydrologyMeltingRate.hpp"
 #include "LandIce_HydrologyResidualCavitiesEqn.hpp"
@@ -581,13 +581,13 @@ Hydrology::constructEvaluators (PHX::FieldManager<PHAL::AlbanyTraits>& fm0,
   //Output
   p->set<std::string>("Ice Overburden Variable Name",ice_overburden_name);
 
-  ev = Teuchos::rcp(new IceOverburden<EvalT,PHAL::AlbanyTraits,false>(*p,dl));
+  ev = Teuchos::rcp(new IceOverburden<EvalT,PHAL::AlbanyTraits>(*p,dl));
   fm0.template registerEvaluator<EvalT>(ev);
 
   // ------------ Ice Overburden (Nodes) ------------- //
 
   p->set<bool>("Nodal", true);
-  ev = Teuchos::rcp(new IceOverburden<EvalT,PHAL::AlbanyTraits,false>(*p,dl));
+  ev = Teuchos::rcp(new IceOverburden<EvalT,PHAL::AlbanyTraits>(*p,dl));
   fm0.template registerEvaluator<EvalT>(ev);
 
   // ------- Hydraulic Potential (QPs) -------- //
@@ -606,13 +606,13 @@ Hydrology::constructEvaluators (PHX::FieldManager<PHAL::AlbanyTraits>& fm0,
   //Output
   p->set<std::string> ("Hydraulic Potential Variable Name",hydraulic_potential_name);
 
-  ev = Teuchos::rcp(new HydraulicPotential<EvalT,PHAL::AlbanyTraits,false>(*p,dl));
+  ev = Teuchos::rcp(new HydraulicPotential<EvalT,PHAL::AlbanyTraits>(*p,dl));
   fm0.template registerEvaluator<EvalT>(ev);
 
   // ------- Hydraulic Potential (Nodes) -------- //
 
   p->set<bool>("Nodal", true);
-  ev = Teuchos::rcp(new HydraulicPotential<EvalT,PHAL::AlbanyTraits,false>(*p,dl));
+  ev = Teuchos::rcp(new HydraulicPotential<EvalT,PHAL::AlbanyTraits>(*p,dl));
   fm0.template registerEvaluator<EvalT>(ev);
 
   // ------- Hydrology Water Discharge -------- //
@@ -628,7 +628,7 @@ Hydrology::constructEvaluators (PHX::FieldManager<PHAL::AlbanyTraits>& fm0,
   //Output
   p->set<std::string>("Water Discharge Variable Name",water_discharge_name);
 
-  ev = Teuchos::rcp(new HydrologyWaterDischarge<EvalT,PHAL::AlbanyTraits,false>(*p,dl));
+  ev = Teuchos::rcp(new HydrologyWaterDischarge<EvalT,PHAL::AlbanyTraits>(*p,dl));
   fm0.template registerEvaluator<EvalT>(ev);
 
   // ------- Hydrology Melting Rate (QPs) -------- //
@@ -663,7 +663,7 @@ Hydrology::constructEvaluators (PHX::FieldManager<PHAL::AlbanyTraits>& fm0,
   // Output
   p->set<std::string>("Ice Softness Variable Name",ice_softness_name);
 
-  ev = Teuchos::rcp(new IceSoftness<EvalT,PHAL::AlbanyTraits, false>(*p,dl));
+  ev = Teuchos::rcp(new FlowRate<EvalT,PHAL::AlbanyTraits, RealType>(*p,dl));
   fm0.template registerEvaluator<EvalT>(ev);
 
   // ------- Sliding Velocity -------- //

@@ -77,7 +77,7 @@ StokesFOBase (const Teuchos::RCP<Teuchos::ParameterList>& params_,
   resid_names.resize(1);
   scatter_names.resize(1);
 
-  dof_names[0] = "Velocity";
+  velocity_name = dof_names[0] = "Velocity";
   resid_names[0] = dof_names[0] + " Residual";
   scatter_names[0] = "Scatter " + resid_names[0];
 
@@ -98,9 +98,6 @@ StokesFOBase (const Teuchos::RCP<Teuchos::ParameterList>& params_,
   effective_pressure_name     = params->sublist("Variables Names").get<std::string>("Effective Pressure Name","effective_pressure");
   vertically_averaged_velocity_name = params->sublist("Variables Names").get<std::string>("Vertically Averaged Velocity Name","vertically_averaged_velocity");
   flux_divergence_name        = params->sublist("Variables Names").get<std::string>("Flux Divergence Name" ,"flux_divergence");
-
-  // Mark the velocity as computed
-  is_computed_field[dof_names[0]] = true;
 
   // By default, we are not coupled to any other physics
   temperature_coupled = false;
@@ -328,7 +325,7 @@ void StokesFOBase::parseInputFields ()
       dist_params_name_to_mesh_part[param_name+"_lowerbound"] = dist_params_name_to_mesh_part[param_name];
 
       // set hte scalar type already to ParamScalar
-      field_scalar_type[param_name] = FieldScalarType::ParamScalar;
+      field_scalar_type[param_name] = FST::ParamScalar;
     }
   }
 
@@ -351,6 +348,12 @@ void StokesFOBase::parseInputFields ()
   std::string fieldType, fieldUsage, meshPart;
   FRT rank;
   FL loc;
+
+  auto eval_names = { PHX::print<PHAL::AlbanyTraits::Residual>(),
+                      PHX::print<PHAL::AlbanyTraits::Jacobian>(),
+                      PHX::print<PHAL::AlbanyTraits::Tangent>(),
+                      PHX::print<PHAL::AlbanyTraits::DistParamDeriv>(),
+                      PHX::print<PHAL::AlbanyTraits::HessianVec>() };
   for (unsigned int ifield=0; ifield<num_fields; ++ifield) {
     Teuchos::ParameterList& thisFieldList = req_fields_info.sublist(Albany::strint("Field", ifield));
 
@@ -403,8 +406,10 @@ void StokesFOBase::parseInputFields ()
     //       but it's not, since the Save(SideSet)StateField evaluators are only created
     //       for the Residual.
     field_rank[stateName] = rank;
-    field_location[stateName] = loc;
-    field_scalar_type[stateName] |= FieldScalarType::Real;
+    field_scalar_type[stateName] |= FST::Real;
+    for (auto eval : eval_names) {
+      is_field_available[eval][stateName][loc] = is_input_field[stateName];
+    }
   }
 
   // Side set requirements
@@ -463,39 +468,40 @@ void StokesFOBase::parseInputFields ()
       }
 
       field_rank[stateName] = rank;
-      field_location[stateName] = loc;
-      field_scalar_type[stateName] |= FieldScalarType::Real;
+      field_scalar_type[stateName] |= FST::Real;
+      for (auto eval : eval_names) {
+        is_field_available[eval][stateName][loc] = is_ss_input_field[ss_name][stateName];
+      }
     }
   }
 }
 
 void StokesFOBase::setFieldsProperties ()
 {
-  // All dofs are computed
-  for (auto it : dof_names) {
-    is_computed_field[it] = true;
+  auto eval_names = { PHX::print<PHAL::AlbanyTraits::Residual>(),
+                      PHX::print<PHAL::AlbanyTraits::Jacobian>(),
+                      PHX::print<PHAL::AlbanyTraits::Tangent>(),
+                      PHX::print<PHAL::AlbanyTraits::DistParamDeriv>(),
+                      PHX::print<PHAL::AlbanyTraits::HessianVec>() };
+  // All dofs are defined at nodes in Albany, so go ahead and mark them available at nodes.
+  for (const auto& eval : eval_names) {
+    for (const auto& dof : dof_names) {
+      is_field_available[eval][dof][FL::Node] = true;
+    }
   }
 
   // All dofs have scalar type Scalar. Note: we can't set field props for all dofs, since we don't know the rank
-  setSingleFieldProperties(dof_names[0], FRT::Vector, FST::Scalar, FL::Node);
+  setSingleFieldProperties(velocity_name, FRT::Vector, FST::Scalar);
 
   // Set properties of known fields. If things are different in derived classes, then adjust.
-  setSingleFieldProperties(ice_thickness_name,  FRT::Scalar, FST::MeshScalar, FL::Node);
-  setSingleFieldProperties(surface_height_name, FRT::Scalar, FST::MeshScalar, FL::Node);
-  setSingleFieldProperties(vertically_averaged_velocity_name, FRT::Vector, FST::Scalar, FL::Node);
-  // Note: corr temp is built from temp and surf height. Combine their scalar types.
-  //       If derived class changes the type of temp or surf height, need to adjust this too.
-  setSingleFieldProperties(corrected_temperature_name, FRT::Scalar, field_scalar_type[temperature_name] | field_scalar_type[surface_height_name], FL::Cell);
-  setSingleFieldProperties(bed_topography_name, FRT::Scalar, FST::MeshScalar, FL::Node);
-  setSingleFieldProperties(body_force_name, FRT::Vector, field_scalar_type[surface_height_name], FL::QuadPoint);
-
-  // If the flow rate is given from file, we could just use RealType, but then we would need
-  // to template ViscosityFO on 3 scalar types. For simplicity, we set it to be the same
-  // of the temperature in ViscosityFO.
-  auto visc_temp_st = viscosity_use_corrected_temperature ?
-                      field_scalar_type[corrected_temperature_name] :
-                      field_scalar_type[temperature_name];
-  setSingleFieldProperties(flow_factor_name, FRT::Scalar, FST::MeshScalar | visc_temp_st, FL::Cell);
+  setSingleFieldProperties(ice_thickness_name,  FRT::Scalar);
+  setSingleFieldProperties(surface_height_name, FRT::Scalar);
+  setSingleFieldProperties(vertically_averaged_velocity_name, FRT::Vector);
+  setSingleFieldProperties(corrected_temperature_name, FRT::Scalar);
+  setSingleFieldProperties(bed_topography_name, FRT::Scalar);
+  setSingleFieldProperties(body_force_name, FRT::Vector);
+  setSingleFieldProperties(flow_factor_name, FRT::Scalar);
+  setSingleFieldProperties(effective_pressure_name, FRT::Scalar);
 }
 
 void StokesFOBase::setupEvaluatorRequests ()
@@ -675,19 +681,32 @@ void StokesFOBase::setupEvaluatorRequests ()
 
 void StokesFOBase::setSingleFieldProperties (const std::string& fname,
                                              const FRT rank,
-                                             const FST st,
-                                             const FL location)
+                                             const FST st)
 {
   TEUCHOS_TEST_FOR_EXCEPTION (field_rank.find(fname)!=field_rank.end() &&
                               field_rank[fname]!=rank, std::logic_error,
-      "Error! Attempt to mark field '" + fname + " with rank " + e2str(rank) +
-      ", when it was previously marked as of rank " + e2str(field_rank[fname]) + ".\n");
+      "Error! Attempt to mark field '" + fname + " with rank " + e2str(rank) + "\n"
+      "       but it was previously marked with rank " + e2str(field_rank[fname]) + ".\n");
 
   field_rank[fname] = rank;
-  field_location[fname] = location;
   // Use logic or, so that if the props of a field are set multiple times
-  // (in this and derived classes), we keep the "strongest" scalar type.
+  // (e.g., in base and derived classes), we keep the "strongest" scalar type.
   field_scalar_type[fname] |= st;
+}
+
+FieldScalarType StokesFOBase::get_scalar_type (const std::string& fname) {
+  // Note: if not set, it defaults to simple real type, the "weakest" scalar type
+  FST st = field_scalar_type[fname];
+  const auto& deps = field_deps[fname];
+  for (const auto& dep : deps) {
+    st |= field_scalar_type[dep];
+  }
+
+  return st;
+}
+
+void StokesFOBase::add_dep (const std::string& fname, const std::string& dep_name) {
+  field_deps[fname].insert(dep_name);
 }
 
 } // namespace LandIce

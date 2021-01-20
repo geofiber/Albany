@@ -8,7 +8,10 @@
 #define LANDICE_EFFECTIVE_PRESSURE_HPP 1
 
 #include "Albany_Layouts.hpp"
+
 #include "PHAL_Dimension.hpp"
+
+#include "Albany_ScalarOrdinalTypes.hpp"
 
 #include "Phalanx_Evaluator_WithBaseImpl.hpp"
 #include "Phalanx_Evaluator_Derived.hpp"
@@ -49,7 +52,7 @@ private:
   void evaluateFieldsCell (typename Traits::EvalData workset);
 
   // Input:
-  PHX::MDField<const ParamScalarT>  P_o;
+  PHX::MDField<const RealType>      P_o;
   PHX::MDField<const HydroScalarT>  P_w;
 
   // Output:

@@ -36,7 +36,7 @@ namespace LandIce
  *
  */
 
-template<typename EvalT, typename Traits, bool IsStokes>
+template<typename EvalT, typename Traits>
 class HydrologyWaterDischarge : public PHX::EvaluatorWithBaseImpl<Traits>,
                                 public PHX::EvaluatorDerived<EvalT, Traits>
 {
@@ -48,8 +48,8 @@ public:
   HydrologyWaterDischarge (const Teuchos::ParameterList& p,
                            const Teuchos::RCP<Albany::Layouts>& dl);
 
-  void postRegistrationSetup (typename Traits::SetupData d,
-                              PHX::FieldManager<Traits>& fm);
+  void postRegistrationSetup (typename Traits::SetupData,
+                              PHX::FieldManager<Traits>&) {}
 
   void evaluateFields(typename Traits::EvalData d);
 
@@ -69,7 +69,9 @@ private:
 
   unsigned int numQPs;
   unsigned int numDim;
-  std::string   sideSetName;
+
+  bool eval_on_side;
+  std::string   sideSetName;  // Only used if eval_on_side=true
 
   double k_0;
   double alpha;
