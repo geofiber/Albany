@@ -153,6 +153,10 @@ protected:
 
   void parseInputFields ();
 
+  std::string sname (const std::string& fname, const std::string& ss_name) {
+    return fname + "_" + ss_name;
+  }
+
   // This method sets the properties of fields that need to be handled automatically (e.g., need interpolation evaluators)
   virtual void setFieldsProperties ();
 
@@ -240,6 +244,7 @@ protected:
   // Track the utility evaluators needed by each side set
   std::map<std::string,std::map<UtilityRequest,bool>>  ss_utils_needed;
 
+  // This is used to automatically detect/establish the scalar type of some fields.
   std::map<std::string,std::set<std::string>> field_deps;
 
   // Name of common variables (constructor provides defaults)
@@ -597,9 +602,7 @@ constructInterpolationEvaluators (PHX::FieldManager<PHAL::AlbanyTraits>& fm0)
     auto dof_it = std::find(dof_names.begin(),dof_names.end(),fname);
     int offset = dof_it==dof_names.end() ? -1 : dof_offsets[std::distance(dof_names.begin(),dof_it)];
 
-    if (needs[IReq::QP_VAL]) {
-      TEUCHOS_TEST_FOR_EXCEPTION(!is_available[fname][FL::Node], std::logic_error,
-          "Error! QuadPoint interpolation requires the field to be available at nodes.\n");
+    if (needs[IReq::QP_VAL] && is_available[fname][FL::Node]) {
       switch (rank) {
         case FRT::Scalar:
           ev = utils.constructDOFInterpolationEvaluator(fname, offset);
@@ -617,9 +620,7 @@ constructInterpolationEvaluators (PHX::FieldManager<PHAL::AlbanyTraits>& fm0)
       fm0.template registerEvaluator<EvalT> (ev);
     }
 
-    if (needs[IReq::GRAD_QP_VAL]) {
-      TEUCHOS_TEST_FOR_EXCEPTION(!is_available[fname][FL::Node], std::logic_error,
-          "Error! QuadPoint interpolation requires the field to be available at nodes.\n");
+    if (needs[IReq::GRAD_QP_VAL] && is_available[fname][FL::Node]) {
       switch (rank) {
         case FRT::Scalar:
           ev = utils.constructDOFGradInterpolationEvaluator(fname, offset);
@@ -695,9 +696,7 @@ constructInterpolationEvaluators (PHX::FieldManager<PHAL::AlbanyTraits>& fm0)
                                   "Error! Evaluators utils for scalar type '" + e2str(st) + "' not found (ss name: " + ss_name + ").\n");
       const auto& utils = *utils_map.at(st);
 
-      if (needs[IReq::QP_VAL]) {
-        TEUCHOS_TEST_FOR_EXCEPTION(!is_available[fname][FL::Node], std::logic_error,
-            "Error! QuadPoint interpolation requires the field to be available at nodes.\n");
+      if (needs[IReq::QP_VAL] && is_available[fname_side][FL::Node]) {
         TEUCHOS_TEST_FOR_EXCEPTION (rank!=FRT::Scalar && rank!=FRT::Vector, std::logic_error,
             "Error! Interpolation on side only available for scalar and vector fields.\n");
         if (rank==FRT::Scalar) {
@@ -708,34 +707,28 @@ constructInterpolationEvaluators (PHX::FieldManager<PHAL::AlbanyTraits>& fm0)
         fm0.template registerEvaluator<EvalT> (ev);
       }
 
-      if (needs[IReq::GRAD_QP_VAL]) {
-        TEUCHOS_TEST_FOR_EXCEPTION (rank!=FRT::Scalar && rank!=FRT::Vector, std::logic_error,
-            "Error! Gradient interpolation on side only available for scalar and vector fields.\n");
-        TEUCHOS_TEST_FOR_EXCEPTION(!is_available[fname][FL::Node], std::logic_error,
-            "Error! QuadPoint interpolation requires the field to be available at nodes.\n");
+      if (needs[IReq::GRAD_QP_VAL] && is_available[fname_side][FL::Node]) {
         if (rank==FRT::Scalar) {
           ev = utils.constructDOFGradInterpolationSideEvaluator (fname_side, ss_name);
-        } else {
+        } else if (rank==FRT::Vector) {
           ev = utils.constructDOFVecGradInterpolationSideEvaluator (fname_side, ss_name);
+        } else {
+          TEUCHOS_TEST_FOR_EXCEPTION (true, std::logic_error,
+              "Error! Gradient interpolation on side only available for scalar and vector fields.\n");
         }
         fm0.template registerEvaluator<EvalT> (ev);
       }
 
-      // TEUCHOS_TEST_FOR_EXCEPTION (field_location.find(fname)==field_location.end(), std::runtime_error,
-      //     "Error! Location of field '" + fname + "' not found (ss name: " + ss_name + ").\n" +
-      //     "       Current map keys:" + print_map_keys(field_location) + "\n");
-
-      // const auto entity = field_location.at(fname);
-      // const std::string layout = e2str(entity) + " " + e2str(rank);
       // Skip if somehow the Cell field is already computed (perhaps by an ad-hoc physics evaluator)
-      if (needs[IReq::CELL_VAL] && !is_available[fname][FL::Cell]) {
+      if (needs[IReq::CELL_VAL] && !is_available[fname_side][FL::Cell]) {
         // Intepolate field at Side from Quad points values
-        if (is_available[fname][FL::QuadPoint]) {
+        if (is_available[fname_side][FL::QuadPoint]) {
           ev = utils.constructCellAverageSideEvaluator (ss_name, fname_side, FL::QuadPoint, rank);
-        } else {
-          TEUCHOS_TEST_FOR_EXCEPTION (!is_available[fname][FL::Node], std::runtime_error,
-              "Error! CellAverage interpolation requires a QuadPoint or Node field.");
+        } else if (is_available[fname_side][FL::Node]) {
           ev = utils.constructCellAverageSideEvaluator (ss_name, fname_side, FL::Node, rank);
+        } else {
+          TEUCHOS_TEST_FOR_EXCEPTION (true, std::runtime_error,
+              "Error! CellAverage interpolation of '" + fname + "' requires a copy of the field at QuadPoints or Nodes.");
         }
         fm0.template registerEvaluator<EvalT> (ev);
       }
@@ -1101,7 +1094,7 @@ void StokesFOBase::constructBasalBCEvaluators (PHX::FieldManager<PHAL::AlbanyTra
     std::string beta_side_name = "beta_" + ssName;
     std::string ice_thickness_side_name = ice_thickness_name + "_" + ssName;
     std::string ice_overburden_side_name = "ice_overburden_" + ssName;
-    std::string effective_pressure_side_name = "effective_pressure_" + ssName;
+    std::string effective_pressure_side_name = effective_pressure_name + "_" + ssName;
     std::string bed_roughness_side_name = "bed_roughness_" + ssName;
     std::string mu_coulomb_side_name = "mu_coulomb_" + ssName;
     std::string mu_power_law_side_name = "mu_power_law_" + ssName;
@@ -1155,7 +1148,7 @@ void StokesFOBase::constructBasalBCEvaluators (PHX::FieldManager<PHAL::AlbanyTra
     }
 
     //--- Ice Overburden (QPs) ---//
-    p = Teuchos::rcp(new Teuchos::ParameterList("LandIce Effective Pressure Surrogate"));
+    p = Teuchos::rcp(new Teuchos::ParameterList("LandIce Ice IceOverburden"));
 
     // Input
     p->set<bool>("Nodal",false);
@@ -1193,16 +1186,18 @@ void StokesFOBase::constructBasalBCEvaluators (PHX::FieldManager<PHAL::AlbanyTra
       // Output
       p->set<std::string>("Effective Pressure Variable Name", effective_pressure_side_name);
 
-      if (!is_available[effective_pressure_name][FL::QuadPoint]) {
+      if (!is_available[effective_pressure_side_name][FL::QuadPoint]) {
         //--- Effective pressure surrogate (QPs) ---//
         ev = Teuchos::rcp(new LandIce::EffectivePressure<EvalT,PHAL::AlbanyTraits,true>(*p,dl_side));
         fm0.template registerEvaluator<EvalT>(ev);
+        is_available[effective_pressure_name][FL::QuadPoint] = true;
       }
-      if (!is_available[effective_pressure_name][FL::Node]) {
+      if (!is_available[effective_pressure_side_name][FL::Node]) {
         //--- Effective pressure surrogate (QPs) ---//
         p->set<bool>("Nodal",true);
         ev = Teuchos::rcp(new LandIce::EffectivePressure<EvalT,PHAL::AlbanyTraits,true>(*p,dl_side));
         fm0.template registerEvaluator<EvalT>(ev);
+        is_available[effective_pressure_name][FL::Node] = true;
       }
 
       //--- Shared Parameter for basal friction coefficient: alpha ---//

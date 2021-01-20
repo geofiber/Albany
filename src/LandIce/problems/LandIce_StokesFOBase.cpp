@@ -501,7 +501,7 @@ void StokesFOBase::setFieldsProperties ()
   setSingleFieldProperties(bed_topography_name, FRT::Scalar);
   setSingleFieldProperties(body_force_name, FRT::Vector);
   setSingleFieldProperties(flow_factor_name, FRT::Scalar);
-  setSingleFieldProperties(effective_pressure_name, FRT::Scalar);
+  setSingleFieldProperties(flux_divergence_name, FRT::Scalar);
 }
 
 void StokesFOBase::setupEvaluatorRequests ()
@@ -525,6 +525,8 @@ void StokesFOBase::setupEvaluatorRequests ()
 
   build_interp_ev[body_force_name][IReq::CELL_VAL] = true;
 
+  bool has_GLF_resp = false;
+  bool has_SMB_resp = false;
   // Basal Friction BC requests
   for (auto it : landice_bcs[LandIceBC::BasalFriction]) {
     std::string ssName = it->get<std::string>("Side Set Name");
@@ -544,30 +546,25 @@ void StokesFOBase::setupEvaluatorRequests ()
     ss_build_interp_ev[ssName][effective_pressure_name][IReq::CELL_TO_SIDE] = true;
     ss_build_interp_ev[ssName][flow_factor_name][IReq::CELL_TO_SIDE] = true;
 
-    // These two are needed for coulomb friction
-    ss_build_interp_ev[ssName]["mu_coulomb"][IReq::QP_VAL] = true;
-    ss_build_interp_ev[ssName]["mu_power_law"][IReq::QP_VAL] = true;
-    ss_build_interp_ev[ssName]["bed_roughness"][IReq::QP_VAL] = true;
-
-    if (is_dist_param["mu_coulomb"]) {
-      ss_build_interp_ev[ssName]["mu_coulomb"][IReq::CELL_TO_SIDE] = true;
-    }
-    if (is_dist_param["mu_power_law"]) {
-      ss_build_interp_ev[ssName]["mu_power_law"][IReq::CELL_TO_SIDE] = true;
-    }
-    if (is_dist_param["bed_roughness"]) {
-      ss_build_interp_ev[ssName]["bed_roughness"][IReq::CELL_TO_SIDE] = true;
-    }
-
-    // For "Given Field" and "Exponent of Given Field" we also need to interpolate the given field at the quadrature points
     auto& bfc = it->sublist("Basal Friction Coefficient");
     const auto type = util::upper_case(bfc.get<std::string>("Type"));
     if (type=="GIVEN FIELD" || type=="EXPONENT OF GIVEN FIELD") {
+      // For "Given Field" and "Exponent of Given Field" we also need
+      // to interpolate the given field at the quadrature points
       ss_build_interp_ev[ssName][bfc.get<std::string>("Given Field Variable Name")][IReq::QP_VAL      ] = true;
       ss_build_interp_ev[ssName][bfc.get<std::string>("Given Field Variable Name")][IReq::CELL_TO_SIDE] = true;
+    } else if (type=="REGULARIZED COULOMB") {
+      // For Coulomg and PowerLaw, we *may* have some distributed parameter fields.
+      // We interpolate (and possibly project on ss) only if they are inputs
+      for (auto fname : {"mu_coulomb" , "bed_roughness", "mu_power_law"}) {
+        if (is_input_field[fname] || is_ss_input_field[ssName][fname]) {
+          ss_build_interp_ev[ssName][fname][IReq::CELL_TO_SIDE] = true;
+          ss_build_interp_ev[ssName][fname][IReq::QP_VAL] = true;
+        }
+        setSingleFieldProperties(fname, FRT::Scalar);
+      }
     }
 
-    bool has_GLF_resp = false;
     if(this->params->isSublist("Response Functions")) {
       const Teuchos::ParameterList& resp = this->params->sublist("Response Functions",true);
       unsigned int num_resps = resp.get<int>("Number Of Responses");
@@ -579,18 +576,27 @@ void StokesFOBase::setupEvaluatorRequests ()
           for(unsigned int j=0; j<num_sub_resps; j++) {
             if(resp.sublist(Albany::strint("Response", i)).sublist(Albany::strint("Response", j)).get<std::string>("Name") == "Grounding Line Flux") {
               has_GLF_resp = true;
-              break;
+              continue;
+            }
+            if(resp.sublist(Albany::strint("Response", i)).sublist(Albany::strint("Response", j)).get<std::string>("Name") == "Surface Mass Balance Mismatch") {
+              has_SMB_resp = true;
+              continue;
             }
           }
-          if (has_GLF_resp)
+          if (has_GLF_resp && has_SMB_resp)
             break;
-        }
-        else {
+        } else {
           if(resp.sublist(Albany::strint("Response", i)).get<std::string>("Name") == "Grounding Line Flux") {
             has_GLF_resp = true;
-            break;
+            continue;
+          }
+          if(resp.sublist(Albany::strint("Response", i)).get<std::string>("Name") == "Surface Mass Balance Mismatch") {
+            has_SMB_resp = true;
+            continue;
           }
         }
+        if (has_GLF_resp && has_SMB_resp)
+          break;
       }
     }
 
@@ -652,7 +658,7 @@ void StokesFOBase::setupEvaluatorRequests ()
   }
 
   // SMB-related diagnostics
-  if (!isInvalid(basalSideName)) {
+  if (!isInvalid(basalSideName) && has_SMB_resp) {
     // Needs BFs
     ss_utils_needed[basalSideName][UtilityRequest::BFS] = true;
 
