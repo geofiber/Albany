@@ -410,6 +410,13 @@ void StokesFOBase::parseInputFields ()
     for (auto eval : eval_names) {
       is_field_available[eval][stateName][loc] = is_input_field[stateName];
     }
+
+    // Request QP interpolation for all input nodal fields
+    if (loc==FL::Node) {
+      build_interp_ev[stateName][IReq::QP_VAL] = true;
+      build_interp_ev[stateName][IReq::GRAD_QP_VAL] = rank != FRT::Gradient;
+      build_interp_ev[stateName][IReq::CELL_VAL] = true;
+    }
   }
 
   // Side set requirements
@@ -470,7 +477,14 @@ void StokesFOBase::parseInputFields ()
       field_rank[stateName] = rank;
       field_scalar_type[stateName] |= FST::Real;
       for (auto eval : eval_names) {
-        is_field_available[eval][stateName][loc] = is_ss_input_field[ss_name][stateName];
+        is_ss_field_available[eval][ss_name][stateName][loc] = is_ss_input_field[ss_name][stateName];
+      }
+
+      // Request QP interpolation for all input nodal fields
+      if (loc==FL::Node) {
+        ss_build_interp_ev[ss_name][stateName][IReq::QP_VAL] = true;
+        ss_build_interp_ev[ss_name][stateName][IReq::GRAD_QP_VAL] = rank != FRT::Gradient;
+        ss_build_interp_ev[ss_name][stateName][IReq::CELL_VAL] = true;
       }
     }
   }

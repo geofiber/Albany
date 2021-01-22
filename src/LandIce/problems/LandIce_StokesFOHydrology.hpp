@@ -937,14 +937,17 @@ StokesFOHydrology::constructEvaluators (PHX::FieldManager<PHAL::AlbanyTraits>& f
   //   return respUtils.constructResponses(fm0, *responseList, paramList, stateMgr);
   // }
 
+  // Finally, construct responses, and return the tags
+  auto tag = constructStokesFOBaseResponsesEvaluators<EvalT> (fm0, meshSpecs, stateMgr, fieldManagerChoice, responseList);
+
   // --- StokesFOBase evaluators --- //
-  // Note: we do these last, so that if an evaluator for soem fields were already created by
-  //       this class, FOBase can skip them by checking is_field_computed[field_name],
-  //       assuming is_computed_field is set for those fields.
+  // Note: we do these last, so that if an evaluator for some field was already created by
+  //       this class (or FOBase's response evaluator creation), FOBase can skip it, by checking
+  //              is_field_available[eval_string][field_name][location],
+  //       assuming this class took care of setting it to true.
   constructStokesFOBaseEvaluators<EvalT> (fm0, meshSpecs, stateMgr, fieldManagerChoice);
 
-  // Finally, construct responses, and return the tags
-  return constructStokesFOBaseResponsesEvaluators<EvalT> (fm0, meshSpecs, stateMgr, fieldManagerChoice, responseList);
+  return tag;
 }
 
 template <typename EvalT>
@@ -958,7 +961,7 @@ constructHydrologyEvaluators (PHX::FieldManager<PHAL::AlbanyTraits>& fm0)
 
   auto& hy_pl = params->sublist("LandIce Hydrology");
 
-  auto& is_available = is_field_available[PHX::print<EvalT>()];
+  auto& is_available = is_ss_field_available[PHX::print<EvalT>()][basalSideName];
 
   // ================== Residual(s) ===================== //
 
@@ -1007,14 +1010,14 @@ constructHydrologyEvaluators (PHX::FieldManager<PHAL::AlbanyTraits>& fm0)
 
     ev = Teuchos::rcp(new LandIce::HydrologyWaterThickness<EvalT,PHAL::AlbanyTraits,true,false>(*p,dl_side));
     fm0.template registerEvaluator<EvalT>(ev);
-    is_available[water_thickness_name][FL::QuadPoint] = true;
+    is_available[bname(water_thickness_name)][FL::QuadPoint] = true;
 
     // -------- Hydrology Water Thickness (nodes) ------- //
     p->set<bool> ("Nodal", true);
 
     ev = Teuchos::rcp(new LandIce::HydrologyWaterThickness<EvalT,PHAL::AlbanyTraits,true,false>(*p,dl_side));
     fm0.template registerEvaluator<EvalT>(ev);
-    is_available[water_thickness_name][FL::Node] = true;
+    is_available[bname(water_thickness_name)][FL::Node] = true;
   } else {
     // ------- Hydrology Cavities Equation Residual -------- //
     p = Teuchos::rcp(new Teuchos::ParameterList("Hydrology Residual Cavities Eqn"));
