@@ -161,7 +161,7 @@ ANONYMOUS:
             Field Type: Node Scalar
             Field Usage: Output
           Field 6: 
-            Field Name: hydraulic_potential
+            Field Name: hydropotential
             Field Type: Node Scalar
             Field Usage: Output
           Field 7: 

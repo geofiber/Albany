@@ -561,12 +561,12 @@ Hydrology::constructEvaluators (PHX::FieldManager<PHAL::AlbanyTraits>& fm0,
   //Output
   p->set<std::string> ("Basal Gravitational Water Potential Variable Name",basal_grav_water_potential_name);
 
-  ev = Teuchos::rcp(new BasalGravitationalWaterPotential<EvalT,PHAL::AlbanyTraits,false>(*p,dl));
+  ev = Teuchos::rcp(new BasalGravitationalWaterPotential<EvalT,PHAL::AlbanyTraits>(*p,dl));
   fm0.template registerEvaluator<EvalT>(ev);
 
   // ------- Hydrology Basal Gravitational Potential (Nodes) -------- //
   p->set<bool> ("Nodal", true);
-  ev = Teuchos::rcp(new BasalGravitationalWaterPotential<EvalT,PHAL::AlbanyTraits,false>(*p,dl));
+  ev = Teuchos::rcp(new BasalGravitationalWaterPotential<EvalT,PHAL::AlbanyTraits>(*p,dl));
   fm0.template registerEvaluator<EvalT>(ev);
 
   // ------------ Ice Overburden (QPs) ------------- //
@@ -653,15 +653,15 @@ Hydrology::constructEvaluators (PHX::FieldManager<PHAL::AlbanyTraits>& fm0,
   fm0.template registerEvaluator<EvalT>(ev);
 
   // --------- Ice Softness --------- //
-  p = Teuchos::rcp(new Teuchos::ParameterList("LandIce Ice Softness"));
+  p = Teuchos::rcp(new Teuchos::ParameterList("LandIce Flow Rate"));
 
   // Input
-  p->set<std::string>("Ice Softness Type",hy_pl.get<std::string>("Ice Softness Type","Uniform"));
   p->set<std::string>("Temperature Variable Name",ice_temperature_name);
   p->set<Teuchos::ParameterList*> ("LandIce Physical Parameters",&params->sublist("LandIce Physical Parameters"));
+  p->set<Teuchos::ParameterList*> ("Parameter List",&params->sublist("LandIce Viscosity"));
 
   // Output
-  p->set<std::string>("Ice Softness Variable Name",ice_softness_name);
+  p->set<std::string>("Flow Rate Variable Name",ice_softness_name);
 
   ev = Teuchos::rcp(new FlowRate<EvalT,PHAL::AlbanyTraits, RealType>(*p,dl));
   fm0.template registerEvaluator<EvalT>(ev);

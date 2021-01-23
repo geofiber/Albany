@@ -21,7 +21,7 @@ namespace LandIce
     This evaluator evaluates the basal potential phi = \rho_w * g * z_b at the basal side
 */
 
-template<typename EvalT, typename Traits, bool IsStokes>
+template<typename EvalT, typename Traits>
 class BasalGravitationalWaterPotential : public PHX::EvaluatorWithBaseImpl<Traits>,
                                          public PHX::EvaluatorDerived<EvalT, Traits>
 {
@@ -50,12 +50,14 @@ private:
   // Output:
   PHX::MDField<ParamScalarT>  phi_0;
 
-  std::string basalSideName;
+  bool eval_on_side;
 
-  unsigned int numNodes;
+  int numPts;
 
   double rho_w;
   double g;
+
+  std::string sideSetName; // Only needed if eval_on_side=true
 };
 
 } // Namespace LandIce

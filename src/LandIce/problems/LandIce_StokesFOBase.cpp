@@ -343,18 +343,13 @@ void StokesFOBase::parseInputFields ()
 
   // Volume mesh requirements
   Teuchos::ParameterList& req_fields_info = discParams->sublist("Required Fields Info");
-  unsigned int num_fields = req_fields_info.get<int>("Number Of Fields",0);
+  int num_fields = req_fields_info.get<int>("Number Of Fields",0);
 
   std::string fieldType, fieldUsage, meshPart;
   FRT rank;
   FL loc;
 
-  auto eval_names = { PHX::print<PHAL::AlbanyTraits::Residual>(),
-                      PHX::print<PHAL::AlbanyTraits::Jacobian>(),
-                      PHX::print<PHAL::AlbanyTraits::Tangent>(),
-                      PHX::print<PHAL::AlbanyTraits::DistParamDeriv>(),
-                      PHX::print<PHAL::AlbanyTraits::HessianVec>() };
-  for (unsigned int ifield=0; ifield<num_fields; ++ifield) {
+  for (int ifield=0; ifield<num_fields; ++ifield) {
     Teuchos::ParameterList& thisFieldList = req_fields_info.sublist(Albany::strint("Field", ifield));
 
     // Get current state specs
@@ -399,6 +394,7 @@ void StokesFOBase::parseInputFields ()
     if (is_dist_param[stateName] || fieldUsage == "Input" || fieldUsage == "Input-Output") {
       // A parameter to gather or a field to load
       is_input_field[stateName] = true;
+      input_field_loc[stateName] = loc;
     }
 
     // Set rank, location and scalar type.
@@ -407,9 +403,6 @@ void StokesFOBase::parseInputFields ()
     //       for the Residual.
     field_rank[stateName] = rank;
     field_scalar_type[stateName] |= FST::Real;
-    for (auto eval : eval_names) {
-      is_field_available[eval][stateName][loc] = is_input_field[stateName];
-    }
 
     // Request QP interpolation for all input nodal fields
     if (loc==FL::Node) {
@@ -472,13 +465,11 @@ void StokesFOBase::parseInputFields ()
       if (!is_dist_param[stateName] && (fieldUsage == "Input" || fieldUsage == "Input-Output")) {
         // A parameter to gather or a field to load
         is_ss_input_field[ss_name][stateName] = true;
+        ss_input_field_loc[ss_name][stateName] = loc;
       }
 
       field_rank[stateName] = rank;
       field_scalar_type[stateName] |= FST::Real;
-      for (auto eval : eval_names) {
-        is_ss_field_available[eval][ss_name][stateName][loc] = is_ss_input_field[ss_name][stateName];
-      }
 
       // Request QP interpolation for all input nodal fields
       if (loc==FL::Node) {
@@ -489,6 +480,61 @@ void StokesFOBase::parseInputFields ()
     }
   }
 }
+
+// void StokesFOBase::init_field_available_maps ()
+// {
+//   // Init is_field_available and is_ss_field_available for all eval types
+//   // to contain just dofs (at nodes) and input fields (at nodes or cells)
+
+//   auto eval_names = { PHX::print<PHAL::AlbanyTraits::Residual>(),
+//                       PHX::print<PHAL::AlbanyTraits::Jacobian>(),
+//                       PHX::print<PHAL::AlbanyTraits::Tangent>(),
+//                       PHX::print<PHAL::AlbanyTraits::DistParamDeriv>(),
+//                       PHX::print<PHAL::AlbanyTraits::HessianVec>() };
+//   for (const auto& eval : eval_names) {
+//     auto& available_3d = is_field_available[eval];
+//     auto& available_2d = is_ss_field_available[eval];
+//     // 3d inputs
+//     available_3d.clear();
+//     for (const auto& it : is_input_field) {
+//       const auto& fname = it.first;
+//       if (it.second) {
+//         const auto& loc = input_field_loc[fname];
+//         available_3d[fname][loc] = true;
+//       }
+//     }
+
+//     // 2d inputs
+//     for (const auto& it1 : is_ss_input_field) {
+//       const auto& ss = it1.first;
+//       available_2d[ss].clear();
+//       for (const auto& it2 : it1.second) {
+//         const auto& fname = it2.first;
+//         if (it2.second) {
+//           const auto& loc = ss_input_field_loc[ss][fname];
+//           available_2d[ss][fname][loc] = true;
+//         }
+//       }
+//     }
+
+//     // Dofs: check sideSetEquations to determine if a dof is available
+//     //       on ss or volume
+//     for (int idof=0; idof<dof_names.size(); ++idof) {
+//       const auto& dof = dof_names[idof];
+//       const auto it = sideSetEquations.find(dof_offsets[idof]);
+//       const auto end = sideSetEquations.end();
+//       if (it!=end && it->second.size()>0) {
+//         // This is a side-set equation. Dof will be gathered on sides only.
+//         for (const auto& ss : it->second) {
+//           available_2d[ss][dof][FL::Node] = true;
+//         }
+//       } else {
+//         // Not a side-set equation. Dof will be gathered in 3d
+//         available_3d[dof][FL::Node] = true;
+//       }
+//     }
+//   }
+// }
 
 void StokesFOBase::setFieldsProperties ()
 {
@@ -507,15 +553,16 @@ void StokesFOBase::setFieldsProperties ()
   // All dofs have scalar type Scalar. Note: we can't set field props for all dofs, since we don't know the rank
   setSingleFieldProperties(velocity_name, FRT::Vector, FST::Scalar);
 
-  // Set properties of known fields. If things are different in derived classes, then adjust.
-  setSingleFieldProperties(ice_thickness_name,  FRT::Scalar);
-  setSingleFieldProperties(surface_height_name, FRT::Scalar);
+  // Set rank of known fields. The scalar type will default to RealType.
+  // If that's not the case for derived problems, they will update the st.
+  setSingleFieldProperties(ice_thickness_name,                FRT::Scalar);
+  setSingleFieldProperties(surface_height_name,               FRT::Scalar);
   setSingleFieldProperties(vertically_averaged_velocity_name, FRT::Vector);
-  setSingleFieldProperties(corrected_temperature_name, FRT::Scalar);
-  setSingleFieldProperties(bed_topography_name, FRT::Scalar);
-  setSingleFieldProperties(body_force_name, FRT::Vector);
-  setSingleFieldProperties(flow_factor_name, FRT::Scalar);
-  setSingleFieldProperties(flux_divergence_name, FRT::Scalar);
+  setSingleFieldProperties(corrected_temperature_name,        FRT::Scalar);
+  setSingleFieldProperties(bed_topography_name,               FRT::Scalar);
+  setSingleFieldProperties(body_force_name,                   FRT::Vector);
+  setSingleFieldProperties(flow_factor_name,                  FRT::Scalar);
+  setSingleFieldProperties(flux_divergence_name,              FRT::Scalar);
 }
 
 void StokesFOBase::setupEvaluatorRequests ()
@@ -720,6 +767,9 @@ FieldScalarType StokesFOBase::get_scalar_type (const std::string& fname) {
   const auto& deps = field_deps[fname];
   for (const auto& dep : deps) {
     st |= field_scalar_type[dep];
+  }
+  if (fname=="water_pressure" || fname==sname("water_pressure",basalSideName)){
+    std::cout << "water pressure here!\n";
   }
 
   return st;

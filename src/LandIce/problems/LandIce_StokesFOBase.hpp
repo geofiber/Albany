@@ -222,6 +222,7 @@ protected:
 
   // Variables used to track properties of fields and parameters
   StrMap<bool>   is_input_field;
+  StrMap<FL>     input_field_loc;
   StrMap<FRT>    field_rank;
   StrMap<FST>    field_scalar_type;
 
@@ -236,7 +237,8 @@ protected:
   StrMap<bool> save_sensitivities;
   StrMap<std::string> dist_params_name_to_mesh_part;
 
-  StrMap<StrMap<bool>>   is_ss_input_field;
+  StrMap<StrMap<bool>>  is_ss_input_field;
+  StrMap<StrMap<FL>>    ss_input_field_loc;
 
   StrMap<bool>  is_dist_param;
   StrMap<bool>  is_extruded_param;
@@ -312,6 +314,8 @@ constructStatesEvaluators (PHX::FieldManager<PHAL::AlbanyTraits>& fm0,
                            Albany::StateManager& stateMgr,
                            Albany::FieldManagerChoice fieldManagerChoice)
 {
+  const auto eval_name = PHX::print<EvalT>();
+
   Albany::EvaluatorUtils<EvalT, PHAL::AlbanyTraits> evalUtils(dl);
 
   // Temporary variables used numerous times below
@@ -390,6 +394,7 @@ constructStatesEvaluators (PHX::FieldManager<PHAL::AlbanyTraits>& fm0,
           ev = evalUtils.constructGatherScalarNodalParameter(stateName,fieldName);
           fm0.template registerEvaluator<EvalT>(ev);
         }
+        is_field_available[eval_name][stateName][FL::Node] = true;
       } else {
         // Not an input (must be computed). Scatter it.
         ev = evalUtils.constructScatterScalarNodalParameter(stateName,fieldName);
@@ -426,19 +431,16 @@ constructStatesEvaluators (PHX::FieldManager<PHAL::AlbanyTraits>& fm0,
         //       loading them directly into an MDField with the correct st.
         auto st = get_scalar_type(stateName);
         if (st==FST::Scalar) {
-          // printf("buildinf ST for %s, with st = %s\n", fieldName.c_str(), e2str(st).c_str());
           ev = Teuchos::rcp(new PHAL::LoadStateFieldST<EvalT,PHAL::AlbanyTraits>(*p));
         } else if (st==FST::ParamScalar) {
-          // printf("buildinf PT for %s, with st = %s\n", fieldName.c_str(), e2str(st).c_str());
           ev = Teuchos::rcp(new PHAL::LoadStateFieldPST<EvalT,PHAL::AlbanyTraits>(*p));
         } else if (st==FST::MeshScalar) {
-          // printf("buildinf MT for %s, with st = %s\n", fieldName.c_str(), e2str(st).c_str());
           ev = Teuchos::rcp(new PHAL::LoadStateFieldMST<EvalT,PHAL::AlbanyTraits>(*p));
         } else {
-          // printf("buildinf RT for %s, with st = %s\n", fieldName.c_str(), e2str(st).c_str());
           ev = Teuchos::rcp(new PHAL::LoadStateFieldRT<EvalT,PHAL::AlbanyTraits>(*p));
         }
         fm0.template registerEvaluator<EvalT>(ev);
+        is_field_available[eval_name][fieldName][FL::Node] = true;
       }
     }
   }
@@ -539,19 +541,16 @@ constructStatesEvaluators (PHX::FieldManager<PHAL::AlbanyTraits>& fm0,
         //       loading them directly into an MDField with the correct st.
         auto st = get_scalar_type(stateName);
         if (st==FST::Scalar) {
-          printf("buildinf ST for %s, with st = %s\n", fieldName.c_str(), e2str(st).c_str());
           ev = Teuchos::rcp(new PHAL::LoadSideSetStateFieldST<EvalT,PHAL::AlbanyTraits>(*p));
         } else if (st==FST::ParamScalar) {
-          printf("buildinf PT for %s, with st = %s\n", fieldName.c_str(), e2str(st).c_str());
           ev = Teuchos::rcp(new PHAL::LoadSideSetStateFieldPST<EvalT,PHAL::AlbanyTraits>(*p));
         } else if (st==FST::MeshScalar) {
-          printf("buildinf MT for %s, with st = %s\n", fieldName.c_str(), e2str(st).c_str());
           ev = Teuchos::rcp(new PHAL::LoadSideSetStateFieldMST<EvalT,PHAL::AlbanyTraits>(*p));
         } else {
-          printf("buildinf RT for %s, with st = %s\n", fieldName.c_str(), e2str(st).c_str());
           ev = Teuchos::rcp(new PHAL::LoadSideSetStateFieldRT<EvalT,PHAL::AlbanyTraits>(*p));
         } 
         fm0.template registerEvaluator<EvalT>(ev);
+        is_ss_field_available[eval_name][ss_name][fieldName][FL::Node] = true;
       }
     }
   }
@@ -571,6 +570,7 @@ constructInterpolationEvaluators (PHX::FieldManager<PHAL::AlbanyTraits>& fm0)
 
   Teuchos::RCP<PHX::Evaluator<PHAL::AlbanyTraits> > ev;
 
+  std::cout << "============== Interpolations for EvalT = " << PHX::print<EvalT>() << "\n";
   // Loop on all input fields
   for (auto& it : build_interp_ev) {
     auto& is_available = is_field_available[PHX::print<EvalT>()];
@@ -666,13 +666,14 @@ constructInterpolationEvaluators (PHX::FieldManager<PHAL::AlbanyTraits>& fm0)
     const std::string& ss_name = it_outer.first;
     const std::string eval_name = PHX::print<EvalT>();
 
-    auto& is_available = is_ss_field_available[eval_name][ss_name];
     // Loop on all fields
     for (auto& it : it_outer.second) {
 
       // Get field name (with and without side name)
       const std::string fname = it.first;
       const std::string fname_side = fname + "_" + ss_name;
+      auto& is_available_2d = is_ss_field_available[eval_name][ss_name][fname_side];
+      auto& is_available_3d = is_field_available[eval_name][fname];
 
       // Get the needs of this field
       auto& needs = it.second;
@@ -680,7 +681,9 @@ constructInterpolationEvaluators (PHX::FieldManager<PHAL::AlbanyTraits>& fm0)
       // Get location, rank, and scalar type of the field.
       // If we are missing some information about this field, we assume it is not needed, so we skip it.
       // If it WAS indeed needed, Phalanx DAG will miss a node, and an exception will be thrown.
-      const auto st = get_scalar_type(fname);
+      // Note: we don't know if the st of fname is set or the st of fname_side is set,
+      //       so use op| to get the strongest (if one is not set, get_scalar_type returns Real).
+      const auto st = get_scalar_type(fname) | get_scalar_type(fname_side);
 
       TEUCHOS_TEST_FOR_EXCEPTION (field_rank.find(fname)==field_rank.end(), std::runtime_error,
           "Error! Rank of field '" + fname + "' not found (ss name: " + ss_name + ").\n" +
@@ -715,7 +718,21 @@ constructInterpolationEvaluators (PHX::FieldManager<PHAL::AlbanyTraits>& fm0)
                                   "Error! Evaluators utils for scalar type '" + e2str(st) + "' not found (ss name: " + ss_name + ").\n");
       const auto& utils = *utils_map.at(st);
 
-      if (needs[IReq::QP_VAL] && is_available[fname_side][FL::Node]) {
+      // Project to the side only if it is requested and it is NOT already available on the side.
+      // Note: do this first so that is_available_2d can be used for other interpolation checks below.
+      if ( needs[IReq::CELL_TO_SIDE] ) {
+        for (auto loc : {FL::Node, FL::Cell} ) {
+          if (!is_available_2d[loc] && is_available_3d[loc]) {
+            // Project from cell to side
+            const std::string layout = e2str(loc) + " " + e2str(rank);
+            ev = utils.constructDOFCellToSideEvaluator(fname, ss_name, layout, cellType, fname_side);
+            fm0.template registerEvaluator<EvalT> (ev);
+            is_available_2d[loc] = true;
+          }
+        }
+      }
+
+      if (needs[IReq::QP_VAL] && is_available_2d[FL::Node] && !is_available_2d[FL::QuadPoint]) {
         TEUCHOS_TEST_FOR_EXCEPTION (rank!=FRT::Scalar && rank!=FRT::Vector, std::logic_error,
             "Error! Interpolation on side only available for scalar and vector fields.\n");
         if (rank==FRT::Scalar) {
@@ -724,10 +741,17 @@ constructInterpolationEvaluators (PHX::FieldManager<PHAL::AlbanyTraits>& fm0)
           ev = utils.constructDOFVecInterpolationSideEvaluator (fname_side, ss_name);
         }
         fm0.template registerEvaluator<EvalT> (ev);
-        is_available[fname_side][FL::QuadPoint] = true;
+        is_available_2d[FL::QuadPoint] = true;
+        std::cout << "QP val for " << fname_side << " with st " << e2str(st) << " built.\n";
+      } else {
+        if (needs[IReq::QP_VAL]) {
+          std::cout << fname_side << " needed QP val, but it wasn't built:\n"
+                    << "  available_2d[node]: " << (is_available_2d[FL::Node] ? "yes" : "no") << "\n"
+                    << "  available_2d[QP]  : " << (is_available_2d[FL::QuadPoint] ? "yes" : "no") << "\n";
+        }
       }
 
-      if (needs[IReq::GRAD_QP_VAL] && is_available[fname_side][FL::Node]) {
+      if (needs[IReq::GRAD_QP_VAL] && is_available_2d[FL::Node]) {
         if (rank==FRT::Scalar) {
           ev = utils.constructDOFGradInterpolationSideEvaluator (fname_side, ss_name);
         } else if (rank==FRT::Vector) {
@@ -740,42 +764,27 @@ constructInterpolationEvaluators (PHX::FieldManager<PHAL::AlbanyTraits>& fm0)
       }
 
       // Skip if somehow the Cell field is already computed (perhaps by an ad-hoc physics evaluator)
-      if (needs[IReq::CELL_VAL] && !is_available[fname_side][FL::Cell]) {
+      if (needs[IReq::CELL_VAL] && !is_available_2d[FL::Cell]) {
         // Intepolate field at Side from Quad points values
-        if (is_available[fname_side][FL::QuadPoint]) {
+        if (is_available_2d[FL::QuadPoint]) {
           ev = utils.constructCellAverageSideEvaluator (ss_name, fname_side, FL::QuadPoint, rank);
           fm0.template registerEvaluator<EvalT> (ev);
-        } else if (is_available[fname_side][FL::Node]) {
+        } else if (is_available_2d[FL::Node]) {
           ev = utils.constructCellAverageSideEvaluator (ss_name, fname_side, FL::Node, rank);
           fm0.template registerEvaluator<EvalT> (ev);
         }
-        is_available[fname_side][FL::Cell] = true;
-      }
-
-      // Project to the side only if it is requested and it is NOT already available on the side.
-      // Note: this does not check that the 3D field exists. You must ensure that.
-      if ( needs[IReq::CELL_TO_SIDE] ) {
-        for (auto loc : {FL::Node, FL::Cell} ) {
-          if (!is_available[fname_side][loc] ) {
-            // Project from cell to side
-            const std::string layout = e2str(loc) + " " + e2str(rank);
-            ev = utils.constructDOFCellToSideEvaluator(fname, ss_name, layout, cellType, fname_side);
-            fm0.template registerEvaluator<EvalT> (ev);
-            is_available[fname_side][loc] = true;
-          }
-        }
+        is_available_2d[FL::Cell] = true;
       }
 
       // We project from side to cell if requested and NOT already available in 3D.
-      // Note: this does not check that the 2D field exists. You must ensure that.
       if (needs[IReq::SIDE_TO_CELL]) {
         for (auto loc : {FL::Node, FL::Cell} ) {
-          if (!is_field_available[eval_name][fname][loc]) {
+          if (!is_available_3d[loc] && is_available_2d[loc]) {
             // Project from cell to side
             const std::string layout = e2str(loc) + " " + e2str(rank);
             ev = utils.constructDOFSideToCellEvaluator(fname_side, ss_name, layout, cellType, fname);
             fm0.template registerEvaluator<EvalT> (ev);
-            is_field_available[eval_name][fname][loc] = true;
+            is_available_3d[loc] = true;
           }
         }
       }
@@ -831,6 +840,7 @@ constructVelocityEvaluators (PHX::FieldManager<PHAL::AlbanyTraits>& fm0,
   Teuchos::RCP<Teuchos::ParameterList> p;
 
   std::string param_name;
+  auto& is_available = is_field_available[PHX::print<EvalT>()];
 
   // ------------------- Interpolations and utilities ------------------ //
 
@@ -912,9 +922,9 @@ constructVelocityEvaluators (PHX::FieldManager<PHAL::AlbanyTraits>& fm0,
 
   //--- LandIce Flow Rate ---//
   auto& visc_pl = params->sublist("LandIce Viscosity");
-  if(visc_pl.isParameter("Flow Rate Type")) {
-    if((visc_pl.get<std::string>("Flow Rate Type") == "From File") ||
-       (visc_pl.get<std::string>("Flow Rate Type") == "From CISM")) {
+  if (!is_available[flow_factor_name][FL::Cell]) {
+    if((visc_pl.get<std::string>("Flow Rate Type","Uniform") == "From File") ||
+       (visc_pl.get<std::string>("Flow Rate Type","Uniform") == "From CISM")) {
       // The field *should* already be specified as an 'Elem Scalar' required field in the mesh.
     } else {
       p = Teuchos::rcp(new Teuchos::ParameterList("LandIce FlowRate"));
@@ -932,6 +942,7 @@ constructVelocityEvaluators (PHX::FieldManager<PHAL::AlbanyTraits>& fm0,
 
       ev = createEvaluatorWithOneScalarType<FlowRate,EvalT>(p,dl,get_scalar_type(temp_name));
       fm0.template registerEvaluator<EvalT>(ev);
+      is_available[flow_factor_name][FL::Cell] = true;
     }
   }
 
@@ -1068,7 +1079,6 @@ constructVelocityEvaluators (PHX::FieldManager<PHAL::AlbanyTraits>& fm0,
   fm0.template registerEvaluator<EvalT>(ev);
 
   if (fieldManagerChoice == Albany::BUILD_RESID_FM) {
-
     // Require scattering of residual
     PHX::Tag<typename EvalT::ScalarT> res_tag(scatter_names[0], dl->dummy);
     fm0.requireField<EvalT>(res_tag);

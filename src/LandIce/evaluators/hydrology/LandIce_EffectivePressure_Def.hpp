@@ -39,6 +39,7 @@ EffectivePressure (const Teuchos::ParameterList& p,
     layout = dl->qp_scalar;
   }
 
+  numPts = eval_on_side ? layout->extent(2) : layout->extent(1);
 
   if (Surrogate) {
     // P_w is set to a percentage of the overburden

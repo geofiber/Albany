@@ -150,6 +150,14 @@ buildEvaluators(
   Albany::FieldManagerChoice fmchoice,
   const Teuchos::RCP<Teuchos::ParameterList>& responseList)
 {
+  // This method is called multiple times, for different field managers.
+  // The maps is_field_available and is_ss_field_available are used to
+  // determine whehter we should build cetrain evaluators.
+  // In order to make the correct choice, these maps *must* be reset
+  // before any call to ConstructEvaluatorsOp.
+  is_field_available.clear();
+  is_ss_field_available.clear();
+
   // Call constructeEvaluators<EvalT>(*rfm[0], *meshSpecs[0], stateMgr);
   // for each EvalT in PHAL::AlbanyTraits::BEvalTypes
   Albany::ConstructEvaluatorsOp<StokesFOHydrology> op(
@@ -250,8 +258,16 @@ void StokesFOHydrology::setFieldsProperties () {
                       PHX::print<PHAL::AlbanyTraits::HessianVec>() };
   for (const auto& eval : eval_names) {
     for (const auto& dof : hydro_dofs_dot_names) {
-      is_field_available[eval][dof][FL::Node] = true;
+      is_ss_field_available[eval][basalSideName][dof][FL::Node] = true;
     }
+  }
+
+  // Set scalar type of hydro dofs (and dot dofs) to ScalarT
+  for (const auto& dof : hydro_dofs_names) {
+    setSingleFieldProperties(dof, FRT::Scalar, FST::Scalar);
+  }
+  for (const auto& dof : hydro_dofs_dot_names) {
+    setSingleFieldProperties(dof, FRT::Scalar, FST::Scalar);
   }
 
   // Set dof's properties
@@ -268,15 +284,16 @@ void StokesFOHydrology::setFieldsProperties () {
 void StokesFOHydrology::setupEvaluatorRequests () {
   StokesFOBase::setupEvaluatorRequests();
 
-  ss_build_interp_ev[basalSideName][water_pressure_name][InterpolationRequest::QP_VAL] = true; 
+  ss_build_interp_ev[basalSideName][water_pressure_name][IReq::QP_VAL] = true; 
   if (!eliminate_h) {
     // If we eliminate h, then we compute water thickness, rather than interpolate the dof
-    ss_build_interp_ev[basalSideName][water_thickness_name][InterpolationRequest::QP_VAL] = true; 
+    ss_build_interp_ev[basalSideName][water_thickness_name][IReq::QP_VAL] = true; 
   }
-  ss_build_interp_ev[basalSideName][hydropotential_name][InterpolationRequest::GRAD_QP_VAL] = true; 
-  ss_build_interp_ev[basalSideName][water_discharge_name][InterpolationRequest::CELL_VAL] = true; 
-  ss_build_interp_ev[basalSideName][surface_water_input_name][InterpolationRequest::QP_VAL] = true; 
-  ss_build_interp_ev[basalSideName][flow_factor_name][InterpolationRequest::CELL_TO_SIDE] = true; 
+  ss_build_interp_ev[basalSideName][hydropotential_name][IReq::GRAD_QP_VAL] = true; 
+  ss_build_interp_ev[basalSideName][water_discharge_name][IReq::CELL_VAL] = true; 
+  ss_build_interp_ev[basalSideName][surface_water_input_name][IReq::QP_VAL] = true; 
+  ss_build_interp_ev[basalSideName][flow_factor_name][IReq::CELL_TO_SIDE] = true; 
+  ss_build_interp_ev[basalSideName][ice_thickness_name][IReq::QP_VAL] = true; 
 }
 
 } // namespace LandIce
